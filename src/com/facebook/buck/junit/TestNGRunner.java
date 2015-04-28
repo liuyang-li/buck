@@ -77,7 +77,18 @@ public final class TestNGRunner extends BaseRunner {
     }
 
     @Override
-    public void onTestStart(ITestResult result) {}
+    public void onTestStart(ITestResult result) {
+      // Create an intermediate stdout/stderr to capture any debugging statements (usually in the
+      // form of System.out.println) the developer is using to debug the test.
+      originalOut = System.out;
+      originalErr = System.err;
+      rawStdOutBytes = new ByteArrayOutputStream();
+      rawStdErrBytes = new ByteArrayOutputStream();
+      stdOutStream = streamToPrintStream(rawStdOutBytes, System.out);
+      stdErrStream = streamToPrintStream(rawStdErrBytes, System.err);
+      System.setOut(stdOutStream);
+      System.setErr(stdErrStream);
+    }
 
     @Override
     public void onTestSuccess(ITestResult result) {
@@ -98,21 +109,12 @@ public final class TestNGRunner extends BaseRunner {
     }
 
     @Override
-    public void onStart(ITestContext context) {
-      // Create an intermediate stdout/stderr to capture any debugging statements (usually in the
-      // form of System.out.println) the developer is using to debug the test.
-      originalOut = System.out;
-      originalErr = System.err;
-      rawStdOutBytes = new ByteArrayOutputStream();
-      rawStdErrBytes = new ByteArrayOutputStream();
-      stdOutStream = streamToPrintStream(rawStdOutBytes, System.out);
-      stdErrStream = streamToPrintStream(rawStdErrBytes, System.err);
-      System.setOut(stdOutStream);
-      System.setErr(stdErrStream);
-    }
+    public void onStart(ITestContext context) {}
 
     @Override
-    public void onFinish(ITestContext context) {
+    public void onFinish(ITestContext context) {}
+
+    private void recordResult(ITestResult result, ResultType type, Throwable failure) {
       // Restore the original stdout/stderr.
       System.setOut(originalOut);
       System.setErr(originalErr);
@@ -120,9 +122,7 @@ public final class TestNGRunner extends BaseRunner {
       // Get the stdout/stderr written during the test as strings.
       stdOutStream.flush();
       stdErrStream.flush();
-    }
 
-    private void recordResult(ITestResult result, ResultType type, Throwable failure) {
       String stdOut = streamToString(rawStdOutBytes);
       String stdErr = streamToString(rawStdErrBytes);
 
