@@ -45,6 +45,10 @@ public final class TestNGRunner extends BaseRunner {
   @Override
   public void run() throws Throwable {
     for (String className : testClassNames) {
+      if (!shouldIncludeTest(className)) {
+        continue;
+      }
+
       final Class<?> testClass = Class.forName(className);
 
       List<TestResult> results;
@@ -65,6 +69,11 @@ public final class TestNGRunner extends BaseRunner {
 
   private boolean isTestClass(Class<?> klass) {
     return klass.getConstructors().length <= 1;
+  }
+
+  private boolean shouldIncludeTest(String className) {
+    TestDescription testDescription = new TestDescription(className, null);
+    return testSelectorList.isIncluded(testDescription);
   }
 
   private static class TestListener implements ITestListener {
