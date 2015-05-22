@@ -662,7 +662,7 @@ public class Project {
   }
 
   private void addResourceFolders(
-      Module module,
+      SerializableModule module,
       @Nullable BuildRule buildRule,
       @Nullable ImmutableList<SourceRoot> resourceRoots,
       boolean isTestSource) {
