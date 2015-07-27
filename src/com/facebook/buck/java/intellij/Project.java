@@ -1083,6 +1083,7 @@ public class Project {
     Console console = executionContext.getConsole();
     Console childConsole = new Console(
         Verbosity.SILENT,
+        console.getStdIn(),
         console.getStdOut(),
         console.getStdErr(),
         Ansi.withoutTty());

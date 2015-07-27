@@ -92,6 +92,7 @@ public final class InputStreamConsumer implements Runnable {
         // this happen), then you could end up with confusing output when stdout and stderr are
         // connected to the same terminal (which is often the case).
         printStream.print(line + LINE_SEPARATOR);
+        printStream.flush();
       }
     } catch (IOException e) {
       throw new RuntimeException(e);

@@ -42,6 +42,7 @@ import org.immutables.value.Value;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
 
@@ -111,9 +112,11 @@ public abstract class ExecutionContext implements Closeable {
    * @return A clone of this {@link ExecutionContext} with {@code stdout} and {@code stderr}
    *    redirected to the provided {@link PrintStream}s.
    */
-  public ExecutionContext createSubContext(PrintStream newStdout, PrintStream newStderr) {
+  public ExecutionContext createSubContext(InputStream newStdin, PrintStream newStdout,
+      PrintStream newStderr) {
     Console console = new Console(
         this.getConsole().getVerbosity(),
+        newStdin,
         newStdout,
         newStderr,
         this.getConsole().getAnsi());

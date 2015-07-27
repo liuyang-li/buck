@@ -89,6 +89,7 @@ import org.kohsuke.args4j.CmdLineException;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.MalformedURLException;
@@ -138,6 +139,7 @@ public final class Main {
   private static final String STATIC_CONTENT_DIRECTORY = System.getProperty(
       "buck.path_to_static_content", "webserver/static");
 
+  private final InputStream stdIn;
   private final PrintStream stdOut;
   private final PrintStream stdErr;
   private final ImmutableList<BuckEventListener> externalEventsListeners;
@@ -404,15 +406,17 @@ public final class Main {
   }
 
   @VisibleForTesting
-  public Main(PrintStream stdOut, PrintStream stdErr) {
-    this(stdOut, stdErr, ImmutableList.<BuckEventListener>of());
+  public Main(InputStream stdIn, PrintStream stdOut, PrintStream stdErr) {
+    this(stdIn, stdOut, stdErr, ImmutableList.<BuckEventListener>of());
   }
 
   @VisibleForTesting
   public Main(
+      InputStream stdIn,
       PrintStream stdOut,
       PrintStream stdErr,
       List<BuckEventListener> externalEventsListeners) {
+    this.stdIn = stdIn;
     this.stdOut = stdOut;
     this.stdErr = stdErr;
     this.platform = Platform.detect();
@@ -488,6 +492,7 @@ public final class Main {
 
     final Console console = new Console(
         verbosity,
+        stdIn,
         stdOut,
         stdErr,
         buckConfig.createAnsi(color));
@@ -997,6 +1002,7 @@ public final class Main {
       return runMainWithExitCode(buildId, projectRoot, context, clientEnvironment, args);
     } catch (HumanReadableException e) {
       Console console = new Console(Verbosity.STANDARD_INFORMATION,
+          stdIn,
           stdOut,
           stdErr,
           new Ansi(
@@ -1069,7 +1075,7 @@ public final class Main {
   }
 
   public static void main(String[] args) {
-    new Main(System.out, System.err).runMainThenExit(args, Optional.<NGContext>absent());
+    new Main(System.in, System.out, System.err).runMainThenExit(args, Optional.<NGContext>absent());
   }
 
   /**
@@ -1080,7 +1086,9 @@ public final class Main {
   public static void nailMain(final NGContext context) throws InterruptedException {
     try (DaemonSlayer.ExecuteCommandHandle handle =
             DaemonSlayer.getSlayer(context).executeCommand()) {
-      new Main(context.out, context.err).runMainThenExit(context.getArgs(), Optional.of(context));
+      // context.out.println("CONTEXT.IN = " + context.in);
+      // context.out.flush();
+      new Main(context.in, context.out, context.err).runMainThenExit(context.getArgs(), Optional.of(context));
     }
   }
 

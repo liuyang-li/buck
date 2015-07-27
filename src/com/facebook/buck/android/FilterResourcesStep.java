@@ -345,6 +345,7 @@ public class FilterResourcesStep implements Step {
           .setExecutionContext(context)
           .setConsole(new Console(
               Verbosity.SILENT,
+              console.getStdIn(),
               console.getStdOut(),
               console.getStdErr(),
               console.getAnsi()

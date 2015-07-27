@@ -106,7 +106,6 @@ public class RunCommand extends AbstractCommand {
 
     String targetName = getTarget(params.getBuckConfig());
     BuildTarget target = Iterables.getOnlyElement(getBuildTargets(ImmutableSet.of(targetName)));
-
     Build build = buildCommand.getBuild();
     BuildRule targetRule = build.getActionGraph().findBuildRuleByTarget(target);
     BinaryBuildRule binaryBuildRule = null;
@@ -118,6 +117,9 @@ public class RunCommand extends AbstractCommand {
           "target " + targetName + " is not a binary rule (only binary rules can be `run`)");
       return 1;
     }
+
+    /*build.getExecutionContext().getProcessExecutor().setStdInStream(
+        build.getExecutionContext().getConsole().getStdIn());*/
 
     // Ideally, we would take fullCommand, disconnect from NailGun, and run the command in the
     // user's shell. Currently, if you use `buck run` with buckd and ctrl-C to kill the command
@@ -142,6 +144,8 @@ public class RunCommand extends AbstractCommand {
         return true;
       }
     };
+    build.getExecutionContext().getProcessExecutor().setStdInStream(System.in);
+
     return step.execute(build.getExecutionContext());
   }
 

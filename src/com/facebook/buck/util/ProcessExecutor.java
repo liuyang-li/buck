@@ -29,8 +29,8 @@ import com.google.common.collect.Iterables;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStreamWriter;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.io.PrintStream;
 import java.util.Set;
 
@@ -98,6 +98,7 @@ public class ProcessExecutor {
     }
   }
 
+  private InputStream stdInStream; //todo: make me final?
   private final PrintStream stdOutStream;
   private final PrintStream stdErrStream;
   private final Ansi ansi;
@@ -110,6 +111,9 @@ public class ProcessExecutor {
     this.stdOutStream = console.getStdOut();
     this.stdErrStream = console.getStdErr();
     this.ansi = console.getAnsi();
+  }
+  public void setStdInStream(InputStream i) {
+    stdInStream = i;
   }
 
   /**
@@ -286,6 +290,20 @@ public class ProcessExecutor {
     // See http://stackoverflow.com/questions/882772/capturing-stdout-when-calling-runtime-exec
     boolean shouldPrintStdOut = options.contains(Option.PRINT_STD_OUT);
     boolean expectingStdOut = options.contains(Option.EXPECTING_STD_OUT);
+
+    /*PrintStream stdInToWriteTo = shouldPrintStdOut ?
+        stdOutStream : new CapturingPrintStream();*/
+
+    InputStreamConsumer stdIn = null;
+    if (stdInStream != null) {
+      stdIn = new InputStreamConsumer(
+          stdInStream,
+          new PrintStream(process.getOutputStream()),
+          ansi,
+          !shouldPrintStdOut && !expectingStdOut,
+          Optional.<InputStreamConsumer.Handler>absent());
+    }
+
     PrintStream stdOutToWriteTo = shouldPrintStdOut ?
         stdOutStream : new CapturingPrintStream();
     InputStreamConsumer stdOut = new InputStreamConsumer(
@@ -307,6 +325,10 @@ public class ProcessExecutor {
         Optional.<InputStreamConsumer.Handler>absent());
 
     // Consume the streams so they do not deadlock.
+    Thread stdInConsumer = Threads.namedThread("ProcessExecutor (stdIn)", stdIn);
+    if (stdInStream != null) {
+      stdInConsumer.start();
+    }
     Thread stdOutConsumer = Threads.namedThread("ProcessExecutor (stdOut)", stdOut);
     stdOutConsumer.start();
     Thread stdErrConsumer = Threads.namedThread("ProcessExecutor (stdErr)", stdErr);
@@ -316,7 +338,6 @@ public class ProcessExecutor {
 
     // Block until the Process completes.
     try {
-
       // If a stdin string was specific, then write that first.  This shouldn't cause
       // deadlocks, as the stdout/stderr consumers are running in separate threads.
       if (stdin.isPresent()) {
@@ -338,8 +359,8 @@ public class ProcessExecutor {
         process.waitFor();
       }
 
-      stdOutConsumer.join();
-      stdErrConsumer.join();
+      //stdOutConsumer.join();
+      //stdErrConsumer.join();
 
     } catch (IOException e) {
       // Buck was killed while waiting for the consumers to finish or while writing stdin
@@ -348,6 +369,9 @@ public class ProcessExecutor {
       // situation.
       return new Result(1);
     } finally {
+      stdOutConsumer.join();
+      stdErrConsumer.join();
+
       process.destroy();
       process.waitFor();
     }
