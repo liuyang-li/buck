@@ -55,6 +55,7 @@ import com.google.common.collect.ImmutableSortedSet;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
@@ -477,12 +478,13 @@ public class OCamlRuleBuilder {
   private static Optional<String> executeProcessAndGetStdout(
       File baseDir,
       ImmutableList<String> cmd) throws IOException, InterruptedException {
+    InputStream stdin = null; //todo: change me?
     CapturingPrintStream stdout = new CapturingPrintStream();
     CapturingPrintStream stderr = new CapturingPrintStream();
 
     ImmutableSet.Builder<ProcessExecutor.Option> options = ImmutableSet.builder();
     options.add(ProcessExecutor.Option.EXPECTING_STD_OUT);
-    Console console = new Console(Verbosity.SILENT, stdout, stderr, Ansi.withoutTty());
+    Console console = new Console(Verbosity.SILENT, stdin, stdout, stderr, Ansi.withoutTty());
     ProcessExecutor exe = new ProcessExecutor(console);
     ProcessBuilder processBuilder = new ProcessBuilder(cmd);
     processBuilder.directory(baseDir);

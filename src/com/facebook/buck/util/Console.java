@@ -20,6 +20,7 @@ import com.facebook.buck.log.Logger;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 
+import java.io.InputStream;
 import java.io.PrintStream;
 
 public class Console {
@@ -27,15 +28,18 @@ public class Console {
   private static final Logger LOG = Logger.get(Console.class);
 
   private final Verbosity verbosity;
+  private InputStream stdIn; //todo: make me final
   private final DirtyPrintStreamDecorator stdOut;
   private final DirtyPrintStreamDecorator stdErr;
   private final Ansi ansi;
 
   public Console(Verbosity verbosity,
+      InputStream stdIn,
       PrintStream stdOut,
       PrintStream stdErr,
       Ansi ansi) {
     this.verbosity = verbosity;
+    this.stdIn = stdIn;
     this.stdOut = new DirtyPrintStreamDecorator(stdOut);
     this.stdErr = new DirtyPrintStreamDecorator(stdErr);
     this.ansi = ansi;
@@ -47,6 +51,13 @@ public class Console {
 
   public Ansi getAnsi() {
     return ansi;
+  }
+
+  public InputStream getStdIn() {
+    return stdIn;
+  }
+  public void setStdIn(InputStream i) {
+    stdIn = i;
   }
 
   public DirtyPrintStreamDecorator getStdOut() {

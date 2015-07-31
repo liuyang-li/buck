@@ -36,6 +36,7 @@ import com.google.common.collect.ImmutableSortedSet;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -176,9 +177,10 @@ public class JavacStep implements Step {
 
   private int tryBuildWithFirstOrderDeps(ExecutionContext context)
       throws InterruptedException, IOException {
+    InputStream stdin = null; //todo: change me??
     CapturingPrintStream stdout = new CapturingPrintStream();
     CapturingPrintStream stderr = new CapturingPrintStream();
-    try (ExecutionContext firstOrderContext = context.createSubContext(stdout, stderr)) {
+    try (ExecutionContext firstOrderContext = context.createSubContext(stdin, stdout, stderr)) {
 
       Javac javac = getJavac();
 
