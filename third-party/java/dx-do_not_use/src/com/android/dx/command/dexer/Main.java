@@ -33,6 +33,7 @@ import com.android.dx.dex.DexOptions;
 import com.android.dx.dex.cf.CfOptions;
 import com.android.dx.dex.cf.CfTranslator;
 import com.android.dx.dex.cf.CodeStatistics;
+import com.android.dx.dex.cf.OptimizerOptions;
 import com.android.dx.dex.code.PositionList;
 import com.android.dx.dex.file.ClassDefItem;
 import com.android.dx.dex.file.DexFile;
@@ -55,6 +56,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -168,6 +170,9 @@ public class Main {
     /** {@code non-null;} parsed command-line arguments */
     private Arguments args;
 
+    /** {@code non-null;} console for reporting messages */
+    private DxConsole dxConsole;
+
     /** {@code non-null;} output file in-progress */
     private DexFile outputDex;
 
@@ -210,17 +215,25 @@ public class Main {
      * @param argArray the command line arguments
      */
     public static void main(String[] argArray) throws IOException {
-        int result = new Main().run(arguments);
+        int result = new Main().run(arguments, null, null);
         if (result != 0) {
             System.exit(result);
         }
     }
     
-    public int run(String[] args) throws IOException {
+    public int run(String[] args, PrintStream out, PrintStream err) throws IOException {
+        DxConsole console = new DxConsole();
+        if (out != null) {
+            console.out = out;
+        }
+        if (err != null) {
+            console.err = err;
+        }
+ 
         Arguments arguments = new Arguments();
         arguments.parse(args);
  
-        return run(arguments);
+        return run(arguments, console);
     }
  
     /**
@@ -228,14 +241,16 @@ public class Main {
      * @param arguments the data + parameters for the conversion
      * @return 0 if success > 0 otherwise.
      */
-    public int run(Arguments arguments) throws IOException {
+    public int run(Arguments arguments, DxConsole console) throws IOException {
         // Reset the error count to start fresh.
         errors.set(0);
         // empty the list, so that  tools that load dx and keep it around
         // for multiple runs don't reuse older buffers.
         libraryDexBuffers.clear();
 
+		dxConsole = console;
         args = arguments;
+        args.dxConsole = dxConsole;
         args.makeOptionsObjects();
 
         OutputStream humanOutRaw = null;
@@ -251,6 +266,13 @@ public class Main {
                 return runMonoDex();
             }
         } finally {
+            if (threadPool != null) {
+                // Uh, oh.  We failed to shut down our thread pool.
+                // Let's do so now to avoid leaking threads in long-running processes.
+                // Worker threads shouldn't have any side effects,
+                // so we shouldn't have to shutdownNow or awaitTermination.
+                threadPool.shutdown();
+            }
             closeOutput(humanOutRaw);
         }
     }
@@ -554,7 +576,7 @@ public class Main {
 
         int errorNum = errors.get();
         if (errorNum != 0) {
-            DxConsole.err.println(errorNum + " error" +
+            dxConsole.err.println(errorNum + " error" +
                     ((errorNum == 1) ? "" : "s") + "; aborting");
             return false;
         }
@@ -564,12 +586,12 @@ public class Main {
         }
 
         if (!(anyFilesProcessed || args.emptyOk)) {
-            DxConsole.err.println("no classfiles specified");
+            dxConsole.err.println("no classfiles specified");
             return false;
         }
 
         if (args.optimize && args.statistics) {
-            CodeStatistics.dumpStatistics(DxConsole.out);
+            args.cfOptions.codeStatistics.dumpStatistics(dxConsole.out);
         }
 
         return true;
@@ -611,12 +633,12 @@ public class Main {
                 if (ex instanceof StopProcessing) {
                     throw (StopProcessing) ex;
                 } else if (ex instanceof SimException) {
-                    DxConsole.err.println("\nEXCEPTION FROM SIMULATION:");
-                    DxConsole.err.println(ex.getMessage() + "\n");
-                    DxConsole.err.println(((SimException) ex).getContext());
+                    dxConsole.err.println("\nEXCEPTION FROM SIMULATION:");
+                    dxConsole.err.println(ex.getMessage() + "\n");
+                    dxConsole.err.println(((SimException) ex).getContext());
                 } else {
-                    DxConsole.err.println("\nUNEXPECTED TOP-LEVEL EXCEPTION:");
-                    ex.printStackTrace(DxConsole.err);
+                    dxConsole.err.println("\nUNEXPECTED TOP-LEVEL EXCEPTION:");
+                    ex.printStackTrace(dxConsole.err);
                 }
                 errors.incrementAndGet();
             }
@@ -624,7 +646,7 @@ public class Main {
             @Override
             public void onProcessArchiveStart(File file) {
                 if (args.verbose) {
-                    DxConsole.out.println("processing archive " + file +
+                    dxConsole.out.println("processing archive " + file +
                             "...");
                 }
             }
@@ -653,13 +675,13 @@ public class Main {
 
         if (!isClass && !isClassesDex && !keepResources) {
             if (args.verbose) {
-                DxConsole.out.println("ignored resource " + name);
+                dxConsole.out.println("ignored resource " + name);
             }
             return false;
         }
 
         if (args.verbose) {
-            DxConsole.out.println("processing " + name + "...");
+            dxConsole.out.println("processing " + name + "...");
         }
 
         String fixedName = fixPath(name);
@@ -731,18 +753,18 @@ public class Main {
 
         try {
             ClassDefItem clazz =
-                CfTranslator.translate(cf, bytes, args.cfOptions, args.dexOptions, outputDex);
+                CfTranslator.translate(cf, bytes, args.cfOptions, args.dexOptions, args.optimizerOptions, outputDex);
             synchronized (outputDex) {
                 outputDex.add(clazz);
             }
             return true;
 
         } catch (ParseException ex) {
-            DxConsole.err.println("\ntrouble processing:");
+            dxConsole.err.println("\ntrouble processing:");
             if (args.debug) {
-                ex.printStackTrace(DxConsole.err);
+                ex.printStackTrace(dxConsole.err);
             } else {
-                ex.printContext(DxConsole.err);
+                ex.printContext(dxConsole.err);
             }
         }
         errors.incrementAndGet();
@@ -783,7 +805,7 @@ public class Main {
          * working. Try to help them understand what's happening.
          */
 
-        DxConsole.err.println("\ntrouble processing \"" + name + "\":\n\n" +
+        dxConsole.err.println("\ntrouble processing \"" + name + "\":\n\n" +
                 IN_RE_CORE_CLASSES);
         errors.incrementAndGet();
         throw new StopProcessing();
@@ -818,7 +840,7 @@ public class Main {
                 }
 
                 if (args.statistics) {
-                    DxConsole.out.println(outputDex.getStatistics().toHuman());
+                    dxConsole.out.println(outputDex.getStatistics().toHuman());
                 }
             } finally {
                 if (humanOutWriter != null) {
@@ -827,10 +849,10 @@ public class Main {
             }
         } catch (Exception ex) {
             if (args.debug) {
-                DxConsole.err.println("\ntrouble writing output:");
-                ex.printStackTrace(DxConsole.err);
+                dxConsole.err.println("\ntrouble writing output:");
+                ex.printStackTrace(dxConsole.err);
             } else {
-                DxConsole.err.println("\ntrouble writing output: " +
+                dxConsole.err.println("\ntrouble writing output: " +
                                    ex.getMessage());
             }
             return null;
@@ -855,9 +877,9 @@ public class Main {
         try {
             Manifest manifest = makeManifest();
             OutputStream out = openOutput(fileName);
-            JarOutputStream jarOut = new JarOutputStream(out, manifest);
 
             try {
+                JarOutputStream jarOut = new JarOutputStream(out, manifest);
                 for (Map.Entry<String, byte[]> e :
                          outputResources.entrySet()) {
                     String name = e.getKey();
@@ -866,7 +888,7 @@ public class Main {
                     int length = contents.length;
 
                     if (args.verbose) {
-                        DxConsole.out.println("writing " + name + "; size " + length + "...");
+                        dxConsole.out.println("writing " + name + "; size " + length + "...");
                     }
 
                     entry.setSize(length);
@@ -874,17 +896,17 @@ public class Main {
                     jarOut.write(contents);
                     jarOut.closeEntry();
                 }
-            } finally {
                 jarOut.finish();
                 jarOut.flush();
+            } finally {
                 closeOutput(out);
             }
         } catch (Exception ex) {
             if (args.debug) {
-                DxConsole.err.println("\ntrouble writing output:");
-                ex.printStackTrace(DxConsole.err);
+                dxConsole.err.println("\ntrouble writing output:");
+                ex.printStackTrace(dxConsole.err);
             } else {
-                DxConsole.err.println("\ntrouble writing output: " +
+                dxConsole.err.println("\ntrouble writing output: " +
                                    ex.getMessage());
             }
             return false;
@@ -1015,7 +1037,7 @@ public class Main {
         int lastDot = fqName.lastIndexOf('.');
 
         if ((lastDot <= 0) || (lastDot == (fqName.length() - 1))) {
-            DxConsole.err.println("bogus fully-qualified method name: " +
+            dxConsole.err.println("bogus fully-qualified method name: " +
                                fqName);
             return;
         }
@@ -1025,7 +1047,7 @@ public class Main {
         ClassDefItem clazz = dex.getClassOrNull(className);
 
         if (clazz == null) {
-            DxConsole.err.println("no such class: " + className);
+            dxConsole.err.println("no such class: " + className);
             return;
         }
 
@@ -1051,7 +1073,7 @@ public class Main {
         }
 
         if (meths.size() == 0) {
-            DxConsole.err.println("no such method: " + fqName);
+            dxConsole.err.println("no such method: " + fqName);
             return;
         }
 
@@ -1270,6 +1292,8 @@ public class Main {
         /** Filename containing list of methods to NOT optimize */
         public String dontOptimizeListFile = null;
 
+        public OptimizerOptions optimizerOptions = new OptimizerOptions();
+
         /** Whether to print statistics to stdout at end of compile cycle */
         public boolean statistics;
 
@@ -1278,6 +1302,9 @@ public class Main {
 
         /** Options for dex file output */
         public DexOptions dexOptions;
+
+        /** Console for reporting messages */
+        public DxConsole dxConsole;
 
         /** number of threads to run with */
         public int numThreads = 1;
@@ -1567,8 +1594,6 @@ public class Main {
             if (outputIsDirectory && !multiDex) {
                 outName = new File(outName, DexFormat.DEX_IN_JAR_NAME).getPath();
             }
-
-            makeOptionsObjects();
         }
 
         /**
@@ -1584,7 +1609,8 @@ public class Main {
             cfOptions.optimizeListFile = optimizeListFile;
             cfOptions.dontOptimizeListFile = dontOptimizeListFile;
             cfOptions.statistics = statistics;
-            cfOptions.warn = DxConsole.err;
+            cfOptions.warn = dxConsole.err;
+            cfOptions.codeStatistics = new CodeStatistics();
 
             dexOptions = new DexOptions();
             dexOptions.forceJumbo = forceJumbo;

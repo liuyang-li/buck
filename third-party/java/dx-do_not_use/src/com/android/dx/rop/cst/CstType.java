@@ -17,16 +17,19 @@
 package com.android.dx.rop.cst;
 
 import com.android.dx.rop.type.Type;
+import com.google.common.collect.MapMaker;
 
-import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Constants that represent an arbitrary type (reference or primitive).
  */
 public final class CstType extends TypedConstant {
     /** {@code non-null;} map of interned types */
-    private static final HashMap<Type, CstType> interns =
-        new HashMap<Type, CstType>(100);
+    private static final Map<String, CstType> interns =
+        new MapMaker()
+            .weakValues()
+            .makeMap();
 
     /** {@code non-null;} instance corresponding to the class {@code Object} */
     public static final CstType OBJECT = intern(Type.OBJECT);
@@ -124,11 +127,11 @@ public final class CstType extends TypedConstant {
      */
     public static CstType intern(Type type) {
         synchronized (interns) {
-            CstType cst = interns.get(type);
+            CstType cst = interns.get(type.getDescriptor());
 
             if (cst == null) {
                 cst = new CstType(type);
-                interns.put(type, cst);
+                interns.put(type.getDescriptor(), cst);
             }
 
             return cst;

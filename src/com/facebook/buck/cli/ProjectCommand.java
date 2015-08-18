@@ -40,6 +40,7 @@ import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.model.BuildTargetException;
 import com.facebook.buck.model.FilesystemBackedBuildFileTree;
 import com.facebook.buck.model.HasBuildTarget;
+import com.facebook.buck.model.Pair;
 import com.facebook.buck.parser.BuildFileSpec;
 import com.facebook.buck.parser.BuildTargetSpec;
 import com.facebook.buck.parser.ParserConfig;
@@ -307,18 +308,31 @@ public class ProjectCommand extends BuildCommand {
     return experimentalIntelliJProjectGenerationEnabled;
   }
 
-  public List<String> getArgumentsFormattedAsBuildTargets(BuckConfig buckConfig) {
-    return getCommandLineBuildTargetNormalizer(buckConfig).normalizeAll(getArguments());
-  }
-
   @Override
   public int runWithoutHelp(CommandRunnerParams params) throws IOException, InterruptedException {
     if (getIde(params.getBuckConfig()) == ProjectCommand.Ide.XCODE) {
       checkForAndKillXcodeIfRunning(params, getIdePrompt(params.getBuckConfig()));
     }
 
-    ImmutableSet<BuildTarget> passedInTargetsSet = getBuildTargets(
-        getArgumentsFormattedAsBuildTargets(params.getBuckConfig()));
+    Pair<ImmutableSet<BuildTarget>, TargetGraph> results = null;
+    try {
+       results = params.getParser()
+          .buildTargetGraphForTargetNodeSpecs(
+              parseArgumentsAsTargetNodeSpecs(
+                  params.getBuckConfig(),
+                  params.getRepository().getFilesystem().getIgnorePaths(),
+                  getArguments()),
+              new ParserConfig(params.getBuckConfig()),
+              params.getBuckEventBus(),
+              params.getConsole(),
+              params.getEnvironment(),
+              getEnableProfiling());
+    } catch (BuildTargetException | BuildFileParseException | HumanReadableException e) {
+      params.getConsole().printBuildFailureWithoutStacktrace(e);
+      return 1;
+    }
+
+    ImmutableSet<BuildTarget> passedInTargetsSet = results.getFirst();
     ProjectGraphParser projectGraphParser = ProjectGraphParsers.createProjectGraphParser(
         params.getParser(),
         new ParserConfig(params.getBuckConfig()),

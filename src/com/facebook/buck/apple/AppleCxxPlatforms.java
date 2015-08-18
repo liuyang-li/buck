@@ -35,6 +35,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
 import java.io.File;
@@ -101,6 +102,12 @@ public class AppleCxxPlatforms {
         break;
       case ApplePlatform.Name.IPHONESIMULATOR:
         cflagsBuilder.add("-mios-simulator-version-min=" + minVersion);
+        break;
+      case ApplePlatform.Name.WATCHOS:
+        cflagsBuilder.add("-mwatchos-version-min=" + minVersion);
+        break;
+      case ApplePlatform.Name.WATCHSIMULATOR:
+        cflagsBuilder.add("-mwatchos-simulator-version-min=" + minVersion);
         break;
       default:
         // For Mac builds, -mmacosx-version-min=<version>.
@@ -194,6 +201,14 @@ public class AppleCxxPlatforms {
 
     ImmutableList<String> cflags = cflagsBuilder.build();
 
+    ImmutableMap.Builder<String, String> macrosBuilder = ImmutableMap.builder();
+    macrosBuilder.put("SDKROOT", sdkPaths.getSdkPath().toString());
+    macrosBuilder.put("PLATFORM_DIR", sdkPaths.getPlatformPath().toString());
+    if (sdkPaths.getDeveloperPath().isPresent()) {
+      macrosBuilder.put("DEVELOPER_DIR", sdkPaths.getDeveloperPath().get().toString());
+    }
+    ImmutableMap<String, String> macros = macrosBuilder.build();
+
     CxxPlatform cxxPlatform = CxxPlatforms.build(
         targetFlavor,
         config,
@@ -215,7 +230,8 @@ public class AppleCxxPlatforms {
         getOptionalTool("lex", toolSearchPaths, executableFinder, version),
         getOptionalTool("yacc", toolSearchPaths, executableFinder, version),
         "dylib",
-        Optional.of(debugPathSanitizer));
+        Optional.of(debugPathSanitizer),
+        macros);
 
     return AppleCxxPlatform.builder()
         .setCxxPlatform(cxxPlatform)

@@ -169,7 +169,11 @@ public class AppleDescriptionsTest {
                 new PathSourcePath(projectFilesystem, Paths.get("Vendor/Bar/Bar.framework")))));
 
     assertEquals(
-        ImmutableList.of("-lz", "-framework", "XCTest", "-framework", "Bar", "-lFoo"),
+        ImmutableList.of(
+            "-lz",
+            "-framework", "XCTest",
+            "-framework", "Bar",
+            "-lFoo"),
         linkerFlags);
   }
 

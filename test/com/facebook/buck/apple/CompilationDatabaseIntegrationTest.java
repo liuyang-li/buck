@@ -27,6 +27,7 @@ import com.facebook.buck.testutil.integration.TestDataHelper;
 import com.facebook.buck.util.environment.Platform;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 
 import org.junit.Assume;
@@ -68,7 +69,6 @@ public class CompilationDatabaseIntegrationTest {
   }
 
   @Test
-  @SuppressWarnings("PMD.LooseCoupling") // ArrayList.class
   public void testCreateCompilationDatabaseForAppleLibraryWithNoDeps() throws IOException {
     // buck build the #compilation-database.
     File compilationDatabase = workspace.buildAndReturnOutput(
@@ -82,7 +82,7 @@ public class CompilationDatabaseIntegrationTest {
     Map<String, CxxCompilationDatabaseEntry> fileToEntry =
         CxxCompilationDatabaseEntry.parseCompilationDatabaseJsonFile(compilationDatabase);
 
-    Iterable<String> frameworks = ImmutableList.of(
+    ImmutableSet<String> frameworks = ImmutableSet.of(
         Paths.get("/System/Library/Frameworks/Foundation.framework").getParent().toString());
     String pathToPrivateHeaders = "buck-out/gen/Libraries/EXExample/" +
         "EXExample#header-symlink-tree,iphonesimulator-x86_64";
@@ -119,7 +119,6 @@ public class CompilationDatabaseIntegrationTest {
   }
 
   @Test
-  @SuppressWarnings("PMD.LooseCoupling") // ArrayList.class
   public void testCreateCompilationDatabaseForAppleBinaryWithDeps() throws IOException {
     // buck build the #compilation-database.
     File compilationDatabase = workspace.buildAndReturnOutput(
@@ -133,7 +132,7 @@ public class CompilationDatabaseIntegrationTest {
     Map<String, CxxCompilationDatabaseEntry> fileToEntry =
         CxxCompilationDatabaseEntry.parseCompilationDatabaseJsonFile(compilationDatabase);
 
-    Iterable<String> frameworks = ImmutableList.of(
+    ImmutableSet<String> frameworks = ImmutableSet.of(
         Paths.get("/System/Library/Frameworks/Foundation.framework").getParent().toString(),
         Paths.get("/System/Library/Frameworks/UIKit.framework").getParent().toString());
     String pathToPrivateHeaders = "buck-out/gen/Apps/Weather/" +
@@ -165,7 +164,7 @@ public class CompilationDatabaseIntegrationTest {
       String output,
       boolean isLibrary,
       Map<String, CxxCompilationDatabaseEntry> fileToEntry,
-      Iterable<String> additionalFrameworks,
+      ImmutableSet<String> additionalFrameworks,
       Iterable<String> includes) throws IOException {
     Path tmpRoot = tmp.getRootPath().toRealPath();
     String key = tmpRoot.resolve(source).toString();
