@@ -34,6 +34,7 @@ import org.testng.IReporter;
 import org.testng.ITestContext;
 import org.testng.ITestListener;
 import org.testng.ITestResult;
+import org.testng.TestListenerAdapter;
 import org.testng.TestNG;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Guice;
@@ -48,6 +49,8 @@ import org.testng.reporters.XMLReporter;
 /** Class that runs a set of TestNG tests and writes the results to a directory. */
 public final class TestNGRunner extends BaseRunner {
 
+  private static TestSuiteFailureListener suiteFailureListener;
+
   @Override
   public void run() throws Throwable {
     for (String className : testClassNames) {
@@ -57,6 +60,8 @@ public final class TestNGRunner extends BaseRunner {
 
       final Class<?> testClass = Class.forName(className);
 
+      suiteFailureListener = new TestSuiteFailureListener();
+
       List<TestResult> results;
       if (!mightBeATestClass(testClass)) {
         results = Collections.emptyList();
@@ -64,6 +69,7 @@ public final class TestNGRunner extends BaseRunner {
         results = new ArrayList<>();
         TestNG testng = new TestNG();
         testng.setUseDefaultListeners(false);
+        testng.addListener(suiteFailureListener);
         testng.setAnnotationTransformer(new FilteringAnnotationTransformer(results));
         testng.setTestClasses(new Class<?>[]{testClass});
         testng.addListener(new TestListener(results));
@@ -195,6 +201,79 @@ public final class TestNGRunner extends BaseRunner {
     }
   }
 
+  /**
+   * Listens for suite configuration / failure, captures stdout/stderr when configuring for
+   * properly reporting both output and exceptions to child test cases
+   */
+  private static class TestSuiteFailureListener extends TestListenerAdapter {
+    private PrintStream originalOut, originalErr, stdOutStream, stdErrStream;
+    private ByteArrayOutputStream rawStdOutBytes, rawStdErrBytes;
+    private Throwable throwable;
+
+    //buffers for holding std out/err when configuring:
+    private String stdOut;
+    private String stdErr;
+
+    @Override
+    public void beforeConfiguration(ITestResult tr) {
+      super.beforeConfiguration(tr);
+      // Create an intermediate stdout/stderr to capture any debugging statements (usually in the
+      // form of System.out.println) the developer is using to debug the test.
+      originalOut = System.out;
+      originalErr = System.err;
+      rawStdOutBytes = new ByteArrayOutputStream();
+      rawStdErrBytes = new ByteArrayOutputStream();
+      stdOutStream = streamToPrintStream(rawStdOutBytes, System.out);
+      stdErrStream = streamToPrintStream(rawStdErrBytes, System.err);
+      System.setOut(stdOutStream);
+      System.setErr(stdErrStream);
+    }
+
+    @Override
+    public void onConfigurationFailure(ITestResult itr) {
+      super.onConfigurationFailure(itr);
+      throwable = itr.getThrowable();
+      stopStreamCapture();
+    }
+
+    @Override
+    public void onConfigurationSkip(ITestResult itr) {
+      super.onConfigurationSkip(itr);
+      stopStreamCapture();
+    }
+
+    @Override
+    public void onConfigurationSuccess(ITestResult itr) {
+      super.onConfigurationSuccess(itr);
+      stopStreamCapture();
+    }
+
+    private void stopStreamCapture() {
+      // Restore the original stdout/stderr.
+      System.setOut(originalOut);
+      System.setErr(originalErr);
+
+      // Get the stdout/stderr written during the test as strings.
+      stdOutStream.flush();
+      stdErrStream.flush();
+
+      stdOut = streamToString(rawStdOutBytes);
+      stdErr = streamToString(rawStdErrBytes);
+    }
+
+    Throwable getThrowable() {
+      return throwable;
+    }
+
+    String getStdOut() {
+      return stdOut;
+    }
+
+    String getStdErr() {
+      return stdErr;
+    }
+  }
+
   private static class TestListener implements ITestListener {
     private final List<TestResult> results;
     private boolean mustRestoreStdoutAndStderr;
@@ -260,28 +339,35 @@ public final class TestNGRunner extends BaseRunner {
       String className = result.getTestClass().getName();
       String methodName = calculateTestMethodName(result);
 
+      // use exception from suite, if available
+      if (suiteFailureListener.getThrowable() != null) {
+        failure = suiteFailureListener.getThrowable();
+        stdOut = suiteFailureListener.getStdOut();
+        stdErr = suiteFailureListener.getStdErr();
+      }
+
       long runTimeMillis = result.getEndMillis() - result.getStartMillis();
       results.add(
           new TestResult(className, methodName, runTimeMillis, type, failure, stdOut, stdErr));
     }
 
-    private String streamToString(ByteArrayOutputStream str) {
-      try {
-        return str.size() == 0 ? null : str.toString(ENCODING);
-      } catch (UnsupportedEncodingException e) {
-        return null;
-      }
-    }
+  }
 
-    private PrintStream streamToPrintStream(ByteArrayOutputStream str, PrintStream fallback) {
-      try {
-        return new PrintStream(str, true /* autoFlush */, ENCODING);
-      } catch (UnsupportedEncodingException e) {
-        return fallback;
-      }
+  private static String streamToString(ByteArrayOutputStream str) {
+    try {
+      return str.size() == 0 ? null : str.toString(ENCODING);
+    } catch (UnsupportedEncodingException e) {
+      return null;
     }
   }
 
+  private static PrintStream streamToPrintStream(ByteArrayOutputStream str, PrintStream fallback) {
+    try {
+      return new PrintStream(str, true /* autoFlush */, ENCODING);
+    } catch (UnsupportedEncodingException e) {
+      return fallback;
+    }
+  }
   private static class JUnitReportReporterImproved extends JUnitReportReporter {
     @Override
     public String getTestName(ITestResult result) {
