@@ -32,7 +32,6 @@ import java.util.stream.Collectors;
 import org.testng.IAnnotationTransformer;
 import org.testng.IReporter;
 import org.testng.ITestContext;
-import org.testng.ITestListener;
 import org.testng.ITestResult;
 import org.testng.TestListenerAdapter;
 import org.testng.TestNG;
@@ -40,6 +39,7 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Guice;
 import org.testng.annotations.ITestAnnotation;
 import org.testng.annotations.Test;
+import org.testng.internal.IResultListener2;
 import org.testng.reporters.EmailableReporter;
 import org.testng.reporters.FailedReporter;
 import org.testng.reporters.JUnitReportReporter;
@@ -69,7 +69,6 @@ public final class TestNGRunner extends BaseRunner {
         results = new ArrayList<>();
         TestNG testng = new TestNG();
         testng.setUseDefaultListeners(false);
-        testng.addListener(suiteFailureListener);
         testng.setAnnotationTransformer(new FilteringAnnotationTransformer(results));
         testng.setTestClasses(new Class<?>[]{testClass});
         testng.addListener(new TestListener(results));
@@ -80,8 +79,21 @@ public final class TestNGRunner extends BaseRunner {
         testng.addListener(new EmailableReporter());
         // ... except this replaces JUnitReportReporter ...
         testng.addListener(new JUnitReportReporterImproved());
-        // ... and we can't access TestNG verbosity, so we remove VerboseReporter
-        testng.run();
+        // ... and we don't want to spam the buck logs, so we remove VerboseReporter
+        // Capture any uncaught errors from TestNG
+        try {
+          testng.run();
+        } catch (Exception e) {
+          results.add(new TestResult(
+              className,
+              "<Initialization Error>",
+              0,
+              ResultType.FAILURE,
+              e,
+              "",
+              "")
+          );
+        }
       }
 
       writeResult(className, results);
@@ -274,18 +286,88 @@ public final class TestNGRunner extends BaseRunner {
     }
   }
 
-  private static class TestListener implements ITestListener {
+  private static class TestListener implements IResultListener2 {
     private final List<TestResult> results;
-    private boolean mustRestoreStdoutAndStderr;
     private PrintStream originalOut, originalErr, stdOutStream, stdErrStream;
     private ByteArrayOutputStream rawStdOutBytes, rawStdErrBytes;
+
+    //buffers for holding std out/err when configuring:
+    private String stdOut;
+    private String stdErr;
 
     public TestListener(List<TestResult> results) {
       this.results = results;
     }
 
     @Override
+    public void beforeConfiguration(ITestResult result) {
+      startCapture();
+    }
+
+    @Override
+    public void onConfigurationFailure(ITestResult result) {
+      recordResult(result, ResultType.FAILURE);
+    }
+
+    @Override
+    public void onConfigurationSkip(ITestResult result) {
+      recordResult(result, ResultType.FAILURE);
+    }
+
+    @Override
+    public void onConfigurationSuccess(ITestResult result) {
+      recordResult(result, ResultType.SUCCESS);
+    }
+
+    @Override
     public void onTestStart(ITestResult result) {
+      startCapture();
+    }
+
+    @Override
+    public void onTestSuccess(ITestResult result) {
+      recordResult(result, ResultType.SUCCESS);
+    }
+
+    @Override
+    public void onTestSkipped(ITestResult result) {
+      recordResult(result, ResultType.FAILURE);
+    }
+
+    @Override
+    public void onTestFailure(ITestResult result) {
+      recordResult(result, ResultType.FAILURE);
+    }
+
+    @Override
+    public void onTestFailedButWithinSuccessPercentage(ITestResult result) {
+      recordResult(result, ResultType.FAILURE);
+    }
+
+    @Override
+    public void onStart(ITestContext context) {}
+
+    @Override
+    public void onFinish(ITestContext context) {}
+
+    private void recordResult(ITestResult result, ResultType type) {
+      stopCapture();
+
+      String className = result.getTestClass().getName();
+      String methodName = calculateTestMethodName(result);
+
+      long runTimeMillis = result.getEndMillis() - result.getStartMillis();
+
+      results.add(new TestResult(className,
+            methodName,
+            runTimeMillis,
+            type,
+            result.getThrowable(),
+            stdOut,
+            stdErr));
+    }
+
+    private void startCapture() {
       // Create an intermediate stdout/stderr to capture any debugging statements (usually in the
       // form of System.out.println) the developer is using to debug the test.
       originalOut = System.out;
@@ -298,33 +380,7 @@ public final class TestNGRunner extends BaseRunner {
       System.setErr(stdErrStream);
     }
 
-    @Override
-    public void onTestSuccess(ITestResult result) {
-      recordResult(result, ResultType.SUCCESS, result.getThrowable());
-    }
-
-    @Override
-    public void onTestSkipped(ITestResult result) {
-      recordResult(result, ResultType.FAILURE, result.getThrowable());
-    }
-
-    @Override
-    public void onTestFailure(ITestResult result) {
-      recordResult(result, ResultType.FAILURE, result.getThrowable());
-    }
-
-    @Override
-    public void onTestFailedButWithinSuccessPercentage(ITestResult result) {
-      recordResult(result, ResultType.FAILURE, result.getThrowable());
-    }
-
-    @Override
-    public void onStart(ITestContext context) {}
-
-    @Override
-    public void onFinish(ITestContext context) {}
-
-    private void recordResult(ITestResult result, ResultType type, Throwable failure) {
+    private void stopCapture() {
       // Restore the original stdout/stderr.
       System.setOut(originalOut);
       System.setErr(originalErr);
@@ -333,22 +389,14 @@ public final class TestNGRunner extends BaseRunner {
       stdOutStream.flush();
       stdErrStream.flush();
 
-      String stdOut = streamToString(rawStdOutBytes);
-      String stdErr = streamToString(rawStdErrBytes);
-
-      String className = result.getTestClass().getName();
-      String methodName = calculateTestMethodName(result);
-
-      // use exception from suite, if available
-      if (suiteFailureListener.getThrowable() != null) {
-        failure = suiteFailureListener.getThrowable();
-        stdOut = suiteFailureListener.getStdOut();
-        stdErr = suiteFailureListener.getStdErr();
+      stdOut = streamToString(rawStdOutBytes);
+      if (stdOut == null) {
+        stdOut = "";
       }
-
-      long runTimeMillis = result.getEndMillis() - result.getStartMillis();
-      results.add(
-          new TestResult(className, methodName, runTimeMillis, type, failure, stdOut, stdErr));
+      stdErr = streamToString(rawStdErrBytes);
+      if (stdErr == null) {
+        stdErr = "";
+      }
     }
 
   }
