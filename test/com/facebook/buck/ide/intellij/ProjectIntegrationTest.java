@@ -19,15 +19,14 @@ package com.facebook.buck.ide.intellij;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-import com.facebook.buck.android.AssumeAndroidPlatform;
 import com.facebook.buck.testutil.integration.ProjectWorkspace;
 import com.facebook.buck.testutil.integration.ProjectWorkspace.ProcessResult;
 import com.facebook.buck.testutil.integration.TemporaryPaths;
 import com.facebook.buck.testutil.integration.TestDataHelper;
 import com.google.common.collect.Lists;
-import java.io.IOException;
 import org.junit.Rule;
 import org.junit.Test;
+import java.io.IOException;
 
 public class ProjectIntegrationTest {
 
@@ -186,6 +185,11 @@ public class ProjectIntegrationTest {
   }
 
   @Test
+  public void testMixedLibraryAndTest() throws InterruptedException, IOException {
+    runBuckProjectAndVerify("project_with_mixed_library_and_test");
+  }
+
+  @Test
   public void testMultipleLibraries() throws InterruptedException, IOException {
     runBuckProjectAndVerify("project_with_multiple_libraries");
   }
@@ -297,7 +301,7 @@ public class ProjectIntegrationTest {
 
   private ProcessResult runBuckProjectAndVerify(String folderWithTestData, String... commandArgs)
       throws InterruptedException, IOException {
-    AssumeAndroidPlatform.assumeSdkIsAvailable();
+    // AssumeAndroidPlatform.assumeSdkIsAvailable();
 
     ProjectWorkspace workspace =
         TestDataHelper.createProjectWorkspaceForScenario(this, folderWithTestData, temporaryFolder);

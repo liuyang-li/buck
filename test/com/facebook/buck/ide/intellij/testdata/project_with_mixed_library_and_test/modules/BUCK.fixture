@@ -1,0 +1,25 @@
+java_library(
+    name = "test_utils",
+    srcs = [
+        "test/**/TestUtil.java",
+    ],
+)
+
+java_test(
+    name = "test",
+    srcs = [
+        "test/**/*Test.java",
+    ],
+    deps = [":test_utils"],
+)
+
+java_library(
+    name = "lib",
+    srcs = [
+        "lib/*.java",
+    ],
+    tests = [
+        ":test",
+        ":test_utils",
+    ],
+)
